@@ -1,0 +1,97 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+walmart_project/
+venv/
+ENV/
+env/
+.venv/
+
+# Environment Variables
+.env
+.env.*
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Jupyter Notebook
+.ipynb_checkpoints
+*.ipynb
+
+# MLflow
+mlruns/
+mlartifacts/
+mlflow.db
+
+# Database
+*.db
+*.sqlite
+*.sql.backup
+database_dumps/
+
+# Logs
+*.log
+logs/
+
+# Python tool caches
+.mypy_cache/
+.pytype/
+.cache/
+pip-wheel-metadata/
+
+# Coverage and testing
+.coverage
+.coverage.*
+coverage.xml
+.pytest_cache/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Model artifacts
+models/checkpoints/
+*.pkl
+*.joblib
+*.h5
+
+# Data (keep structure, ignore large files)
+data/*.csv.backup
+data/processed/
+data/temp/
+
+# Docker
+docker-compose.override.yml
+
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Streamlit
+.streamlit/secrets.toml

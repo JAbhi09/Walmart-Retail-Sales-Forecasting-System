@@ -1,0 +1,74 @@
+# Database Configuration
+database:
+  host: localhost
+  port: 5432
+  name: walmart_retail
+  user: postgres
+  
+# MLflow Configuration
+mlflow:
+  tracking_db: mlflow_db
+  artifact_root: ./mlartifacts
+  experiment_name: walmart_forecasting
+
+# Model Configuration
+model:
+  name: lightgbm_forecaster
+  num_boost_round: 2000
+  early_stopping_rounds: 100
+  params:
+    objective: regression
+    metric: rmse
+    boosting_type: gbdt
+    n_estimators: 2000
+    learning_rate: 0.03
+    max_depth: -1
+    num_leaves: 127
+    min_child_samples: 20
+    subsample: 0.8
+    colsample_bytree: 0.8
+    reg_alpha: 0.1
+    reg_lambda: 0.1
+    random_state: 42
+  
+  # WMAE weights
+  holiday_weight: 5.0
+  regular_weight: 1.0
+
+# Feature Engineering
+features:
+  # Lag features (in weeks)
+  lags: [1, 2, 4, 8, 52]
+  
+  # Rolling windows (in weeks)
+  rolling_windows:
+    - window: 4
+      functions: [mean, std, min, max]
+    - window: 13
+      functions: [mean, std]
+    - window: 52
+      functions: [mean, std]
+  
+  # Temporal features
+  temporal:
+    - week_of_year
+    - month
+    - quarter
+    - is_month_start
+    - is_month_end
+  
+  # Store features
+  store:
+    - store_type  # One-hot encoded
+    - size_normalized
+
+# Forecasting
+forecasting:
+  horizon_weeks: 8
+  confidence_interval: 0.15  # ±15%
+
+# Logging
+logging:
+  level: INFO
+  format: '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+  file: logs/app.log
