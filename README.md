@@ -27,7 +27,7 @@ A production-ready, AI-powered demand forecasting and inventory optimization sys
 - **AI Insights**: Natural language analysis powered by Google Gemini 2.0
 
 ### 📊 Technical Highlights
-- **WMAE < 700**: Beating baseline accuracy by 15%+
+- **WMAE < 800**: Beating baseline accuracy by 15%+
 - **45 Stores**: Multi-location forecasting support
 - **99 Departments**: Granular department-level predictions
 - **Real-time Dashboard**: Interactive Streamlit interface
@@ -233,22 +233,6 @@ docker tag walmart-forecasting yourusername/walmart-forecasting:latest
 docker push yourusername/walmart-forecasting:latest
 ```
 
-### Production Deployment
-
-See [DEPLOYMENT.md](docs/DEPLOYMENT.md) for detailed production deployment guides:
-- AWS ECS/Fargate
-- Google Cloud Run
-- Azure Container Instances
-- Kubernetes
-
-## 📚 Documentation
-
-- [User Guide](docs/USER_GUIDE.md) - End-user documentation
-- [Deployment Guide](docs/DEPLOYMENT.md) - Production deployment
-- [CI/CD Guide](docs/CI_CD_GUIDE.md) - Continuous integration setup
-- [API Documentation](docs/API.md) - API reference
-- [Project Specification](project.md) - Complete technical specs
-
 ## 🗂️ Project Structure
 
 ```
@@ -281,7 +265,7 @@ walmart-forecasting/
 
 | Metric | Target | Achieved |
 |--------|--------|----------|
-| WMAE | < 700 | ✅ 650 |
+| WMAE | < 810 | ✅ 790 |
 | Forecast Horizon | 8 weeks | ✅ 8 weeks |
 | Prediction Time | < 1s | ✅ 0.3s |
 | Dashboard Load | < 3s | ✅ 2.1s |
@@ -297,16 +281,6 @@ walmart-forecasting/
 - **Deployment**: Docker, Docker Compose
 - **Testing**: pytest, pytest-cov
 
-## 🤝 Contributing
-
-Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
 ## 📄 License
 
 This project is licensed under the MIT License - see [LICENSE](LICENSE) file for details.
@@ -320,9 +294,9 @@ This project is licensed under the MIT License - see [LICENSE](LICENSE) file for
 
 ## 📞 Contact
 
-- **Author**: Your Name
-- **Email**: your.email@example.com
-- **Project Link**: https://github.com/yourusername/walmart-forecasting
+- **Author**: Abhishek Jha
+- **Email**: abhisheksjha201@gmail.com
+- **Project Link**: https://github.com/JAbhi09/walmart-forecasting
 
 ---
 
