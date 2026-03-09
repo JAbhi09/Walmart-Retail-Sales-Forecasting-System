@@ -45,10 +45,10 @@ class AgentOrchestrator:
         logger.info("AgentOrchestrator: Running comprehensive forecast analysis")
         
         # Filter data if needed
-        if store_id:
+        if store_id is not None:
             forecasts = forecasts[forecasts['store_id'] == store_id]
             historical_sales = historical_sales[historical_sales['store_id'] == store_id]
-        if dept_id:
+        if dept_id is not None:
             forecasts = forecasts[forecasts['dept_id'] == dept_id]
             historical_sales = historical_sales[historical_sales['dept_id'] == dept_id]
         
