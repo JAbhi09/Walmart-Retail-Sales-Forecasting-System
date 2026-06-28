@@ -100,7 +100,7 @@ def create_rolling_features(df, windows=[4, 13, 52], target_col='weekly_sales'):
             rolling_cols.append(f'rolling_max_{window}')
 
     rows_before = len(df)
-    df = df.dropna(subset=rolling_cols)
+    df = df.dropna(subset=rolling_cols, how='all')
     rows_dropped = rows_before - len(df)
 
     logger.info(f"✓ Created rolling features for {len(windows)} windows")
