@@ -70,7 +70,7 @@ def write_features_to_db(features_df):
         'week_of_year', 'month', 'quarter', 'is_month_start', 'is_month_end', 'is_holiday',
         'sales_lag_1', 'sales_lag_2', 'sales_lag_4', 'sales_lag_8', 'sales_lag_52',
         'rolling_mean_4', 'rolling_mean_13', 'rolling_mean_52',
-        'rolling_std_4', 'rolling_std_13', 'rolling_min_4', 'rolling_max_4',
+        'rolling_std_4', 'rolling_std_13', 'rolling_std_52', 'rolling_min_4', 'rolling_max_4',
         'temperature', 'temperature_deviation', 'fuel_price', 'fuel_price_change',
         'cpi', 'cpi_change', 'unemployment', 'unemployment_change',
         'total_markdown', 'has_markdown', 'markdown_count',
