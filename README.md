@@ -296,7 +296,9 @@ This project is licensed under the MIT License - see [LICENSE](LICENSE) file for
 
 - **Author**: Abhishek Jha
 - **Email**: abhisheksjha201@gmail.com
-- **Project Link**: https://github.com/JAbhi09/Walmart-Retail-Sales-Forecasting-System
+
+=======
+- **Project Link**: [https://github.com/JAbhi09/walmart-forecasting](https://github.com/JAbhi09/Walmart-Retail-Sales-Forecasting-System)
 
 ---
 
