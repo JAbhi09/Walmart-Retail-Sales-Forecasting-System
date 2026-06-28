@@ -2,12 +2,21 @@
 Feature Engineering Module
 Transforms raw sales and features data into ML-ready features
 """
+import os
+import yaml
 import pandas as pd
 import numpy as np
 from datetime import datetime
 import logging
 
 logger = logging.getLogger(__name__)
+
+_cfg_path = os.path.join(os.path.dirname(__file__), '..', 'config', 'config.yaml')
+with open(_cfg_path) as f:
+    _cfg = yaml.safe_load(f)
+
+LAG_PERIODS = _cfg['features']['lag_periods']
+ROLLING_WINDOWS = _cfg['features']['rolling_windows']
 
 
 def create_temporal_features(df):
@@ -33,7 +42,7 @@ def create_temporal_features(df):
     return df
 
 
-def create_lag_features(df, lags=[1, 2, 4, 8, 52], target_col='weekly_sales'):
+def create_lag_features(df, lags=LAG_PERIODS, target_col='weekly_sales'):
     """
     Create lag features for time series
     
@@ -57,7 +66,7 @@ def create_lag_features(df, lags=[1, 2, 4, 8, 52], target_col='weekly_sales'):
     return df
 
 
-def create_rolling_features(df, windows=[4, 13, 52], target_col='weekly_sales'):
+def create_rolling_features(df, windows=ROLLING_WINDOWS, target_col='weekly_sales'):
     """
     Create rolling window statistics
     
@@ -249,10 +258,10 @@ def engineer_features(sales_df, features_df, stores_df):
     df = create_temporal_features(df)
     
     # 2. Lag features
-    df = create_lag_features(df, lags=[1, 2, 4, 8, 52])
+    df = create_lag_features(df)
     
     # 3. Rolling features
-    df = create_rolling_features(df, windows=[4, 13, 52])
+    df = create_rolling_features(df)
     
     # 4. Economic features
     df = create_economic_features(df)
