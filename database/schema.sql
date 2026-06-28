@@ -78,6 +78,7 @@ CREATE TABLE engineered_features (
     rolling_mean_52 DECIMAL(12, 2),
     rolling_std_4 DECIMAL(12, 2),
     rolling_std_13 DECIMAL(12, 2),
+    rolling_std_52 DECIMAL(12, 2),
     rolling_min_4 DECIMAL(12, 2),
     rolling_max_4 DECIMAL(12, 2),
     

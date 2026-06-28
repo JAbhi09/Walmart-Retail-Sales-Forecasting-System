@@ -38,16 +38,10 @@ model:
 # Feature Engineering
 features:
   # Lag features (in weeks)
-  lags: [1, 2, 4, 8, 52]
-  
+  lag_periods: [1, 2, 4, 8, 52]
+
   # Rolling windows (in weeks)
-  rolling_windows:
-    - window: 4
-      functions: [mean, std, min, max]
-    - window: 13
-      functions: [mean, std]
-    - window: 52
-      functions: [mean, std]
+  rolling_windows: [4, 13, 52]
   
   # Temporal features
   temporal:
