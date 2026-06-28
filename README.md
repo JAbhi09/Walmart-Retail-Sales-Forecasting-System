@@ -1,12 +1,12 @@
-# 🛒 Walmart Retail Sales Forecasting System
+# Walmart Retail Sales Forecasting System
 
-A production-ready, AI-powered demand forecasting and inventory optimization system built with LightGBM, Google Gemini, and Streamlit.
+A production-ready, AI-powered demand forecasting and inventory optimization system built with LightGBM, Google Gemini 2.5 Flash, and Streamlit.
 
 ![Python](https://img.shields.io/badge/python-3.11-blue.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 ![Docker](https://img.shields.io/badge/docker-ready-blue.svg)
 
-## 📋 Table of Contents
+## Table of Contents
 
 - [Features](#features)
 - [Architecture](#architecture)
@@ -15,41 +15,55 @@ A production-ready, AI-powered demand forecasting and inventory optimization sys
 - [Usage](#usage)
 - [Testing](#testing)
 - [Deployment](#deployment)
-- [Documentation](#documentation)
-- [Contributing](#contributing)
+- [Project Structure](#project-structure)
+- [Performance Metrics](#performance-metrics)
+- [Tech Stack](#tech-stack)
 
-## ✨ Features
+## Features
 
-### 🎯 Core Capabilities
-- **Demand Forecasting**: 8-week ahead sales predictions using LightGBM
-- **Inventory Optimization**: Automated reorder point and safety stock calculations
-- **Anomaly Detection**: Real-time identification of unusual sales patterns
-- **AI Insights**: Natural language analysis powered by Google Gemini 2.0
+### Core Capabilities
 
-### 📊 Technical Highlights
+- **Demand Forecasting**: 8-week ahead sales predictions using LightGBM with P10/P90 quantile prediction intervals
+- **Inventory Optimization**: Automated reorder point and safety stock calculations (95% service level, 7-day lead time)
+- **Anomaly Detection**: Real-time identification of unusual sales patterns using a 3-sigma threshold
+- **AI Insights**: Natural language analysis powered by Google Gemini 2.5 Flash
+- **Cross-Agent Synthesis**: Contradictions and connections identified across all three agents that no single agent would catch alone
+- **Critical Alerts Roll-up**: Aggregated critical-severity findings surfaced for dashboards or notifications
+
+### Technical Highlights
+
 - **WMAE < 800**: Beating baseline accuracy by 15%+
 - **45 Stores**: Multi-location forecasting support
 - **99 Departments**: Granular department-level predictions
 - **Real-time Dashboard**: Interactive Streamlit interface
-- **MLflow Integration**: Complete experiment tracking
+- **MLflow Integration**: Complete experiment tracking with model registry
+- **Structured Agent Responses**: Typed `AgentResponse` model with status, insights, recommendations, and execution timing
+- **Per-Agent Error Isolation**: One agent failure does not stop the pipeline — remaining agents still return results
 
-## 🏗️ Architecture
+## Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────┐
 │                  Streamlit Dashboard                     │
-│              (Interactive UI & Visualizations)           │
+│              (dashboard/Home.py)                         │
 └────────────────────┬────────────────────────────────────┘
                      │
         ┌────────────┴────────────┐
         │                         │
         ▼                         ▼
-┌──────────────┐          ┌──────────────┐
-│  ML Pipeline │          │  AI Agents   │
-│  (LightGBM)  │          │  (Gemini)    │
-└──────┬───────┘          └──────┬───────┘
-       │                         │
-       └────────────┬────────────┘
+┌──────────────┐          ┌────────────────────┐
+│  ML Pipeline │          │  AgentOrchestrator  │
+│  (LightGBM)  │          │                    │
+│  + Quantile  │          │  ┌──────────────┐  │
+│  Regression  │          │  │ DemandAgent  │  │
+└──────┬───────┘          │  ├──────────────┤  │
+       │                  │  │ InventoryAgt │  │
+       │                  │  ├──────────────┤  │
+       │                  │  │ AnomalyAgent │  │
+       │                  │  └──────────────┘  │
+       │                  │  Cross-Agent Synth  │
+       │                  └──────────┬─────────┘
+       └────────────┬────────────────┘
                     ▼
          ┌─────────────────────┐
          │   PostgreSQL DB     │
@@ -57,14 +71,29 @@ A production-ready, AI-powered demand forecasting and inventory optimization sys
          └─────────────────────┘
 ```
 
-## 🚀 Quick Start
+### Multi-Agent System
+
+The `AgentOrchestrator` runs three specialized agents with per-agent error isolation via `safe_process()`, which returns a structured `AgentResponse`:
+
+| Agent | Role |
+|---|---|
+| `DemandForecastingAgent` | Trend analysis, demand change %, seasonal patterns |
+| `InventoryOptimizationAgent` | Safety stock, reorder points, demand coefficient of variation |
+| `AnomalyDetectionAgent` | 3-sigma outlier detection on historical sales |
+
+After all three complete, the orchestrator runs **cross-agent synthesis** to surface:
+- Contradictions (e.g., demand decline vs. safety stock calculated from higher-demand periods)
+- Dependency warnings (e.g., anomalies skewing forecast training data)
+- Reinforcing signals (e.g., high demand CV confirmed by both inventory and anomaly agents)
+
+## Quick Start
 
 ### Using Docker (Recommended)
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/yourusername/walmart-forecasting.git
-cd walmart-forecasting
+git clone https://github.com/JAbhi09/Walmart-Retail-Sales-Forecasting-System.git
+cd Walmart-Retail-Sales-Forecasting-System
 
 # 2. Create .env file
 cp .env.example .env
@@ -90,34 +119,37 @@ pip install -r requirements.txt
 # 3. Set up database
 python scripts/setup_database.py
 
-# 4. Load data
+# 4. Load and engineer features
 python data_pipeline/data_loader.py
+python data_pipeline/run_feature_engineering.py
 
-# 5. Run dashboard
-streamlit run dashboard/app.py
+# 5. Train model
+python models/trainer.py
+
+# 6. Run dashboard
+streamlit run dashboard/Home.py
 ```
 
-## 📦 Installation
+## Installation
 
 ### Prerequisites
 
 - Python 3.11+
 - PostgreSQL 16+
 - Docker & Docker Compose (for containerized deployment)
-- Google Gemini API key
+- Google Gemini API key (`GOOGLE_API_KEY`)
 
-### Step-by-Step Installation
+### Step-by-Step
 
 1. **Clone Repository**
    ```bash
-   git clone https://github.com/yourusername/walmart-forecasting.git
-   cd walmart-forecasting
+   git clone https://github.com/JAbhi09/Walmart-Retail-Sales-Forecasting-System.git
    ```
 
 2. **Environment Setup**
    ```bash
    cp .env.example .env
-   # Edit .env with your configuration
+   # Set GOOGLE_API_KEY, DB_PASSWORD, MLFLOW_TRACKING_URI
    ```
 
 3. **Install Dependencies**
@@ -127,39 +159,37 @@ streamlit run dashboard/app.py
 
 4. **Database Setup**
    ```bash
-   # Create databases
    createdb walmart_retail
-   createdb mlflow_tracking
-   
-   # Initialize schema
+   createdb mlflow_db
    python scripts/setup_database.py
    ```
 
 5. **Load Data**
    ```bash
-   # Place CSV files in data/ directory
+   # Place train.csv, test.csv, stores.csv, features.csv in data/
    python data_pipeline/data_loader.py
+   python data_pipeline/run_feature_engineering.py
    ```
 
-6. **Train Models**
+6. **Train Model**
    ```bash
    python models/trainer.py
    ```
 
-## 💻 Usage
+## Usage
 
 ### Running the Dashboard
 
 ```bash
-streamlit run dashboard/app.py
+streamlit run dashboard/Home.py
 ```
 
-Access at: http://localhost:8501
+Access at: `http://localhost:8501`
 
 ### Training Models
 
 ```bash
-# Train LightGBM model
+# Train LightGBM model (point forecast + P10/P90 quantile models)
 python models/trainer.py
 
 # View experiments in MLflow
@@ -167,21 +197,39 @@ mlflow ui
 # Access at: http://localhost:5000
 ```
 
-### Using AI Agents
+### Using AI Agents Programmatically
 
 ```python
+from agents.orchestrator import AgentOrchestrator
+
+orchestrator = AgentOrchestrator()
+
+result = orchestrator.analyze_forecast(
+    forecasts=forecasts_df,
+    historical_sales=historical_df,
+    store_id=1,
+    dept_id=1,
+)
+
+print(result["summary"])
+print(result["critical_alerts"])
+print(result["cross_agent_synthesis"])
+
+# Ask a single agent directly
 from agents.demand_agent import DemandForecastingAgent
 
 agent = DemandForecastingAgent()
-result = agent.process({
+response = agent.safe_process({
     "forecasts": forecasts_df,
+    "historical_sales": historical_df,
     "store_id": 1,
-    "dept_id": 1
+    "question": "What are the key demand trends for next 8 weeks?",
 })
-print(result["response"])
+print(response.summary)
+print(response.recommendations)
 ```
 
-## 🧪 Testing
+## Testing
 
 ### Run All Tests
 
@@ -193,113 +241,146 @@ pytest tests/ -v
 
 ```bash
 pytest tests/ --cov=. --cov-report=html
+# Open htmlcov/index.html
 ```
 
 ### Test Categories
 
 ```bash
-# Unit tests only
-pytest tests/test_database.py tests/test_model.py
+# Unit tests
+pytest tests/test_model.py tests/test_database.py tests/test_feature_engineering.py
+
+# Agent tests
+pytest tests/test_agents.py tests/test_validation.py
 
 # Integration tests
 pytest tests/test_integration.py
-
-# Performance validation
-pytest tests/test_validation.py
 ```
 
-## 🐳 Deployment
+## Deployment
 
-### Docker Deployment
+### Docker
 
 ```bash
-# Build image
 docker build -t walmart-forecasting .
 
-# Run container
 docker run -p 8501:8501 \
+  -e GOOGLE_API_KEY=your_key \
   -e DB_PASSWORD=your_password \
-  -e GEMINI_API_KEY=your_key \
+  -e MLFLOW_TRACKING_URI=your_uri \
   walmart-forecasting
 ```
 
-### Docker Hub
+### Docker Compose (full stack)
 
 ```bash
-# Tag image
-docker tag walmart-forecasting yourusername/walmart-forecasting:latest
-
-# Push to Docker Hub
-docker push yourusername/walmart-forecasting:latest
+docker-compose up -d
 ```
 
-## 🗂️ Project Structure
+Spins up: Streamlit dashboard, PostgreSQL, MLflow tracking server.
+
+## Project Structure
 
 ```
 walmart-forecasting/
-├── agents/                 # AI agents (Gemini-powered)
-│   ├── demand_agent.py
-│   ├── inventory_agent.py
-│   └── anomaly_agent.py
-├── dashboard/             # Streamlit dashboard
-│   ├── app.py
-│   └── pages/
-├── data_pipeline/         # ETL and feature engineering
-│   ├── data_loader.py
-│   └── feature_engineering.py
-├── database/              # Database schema and management
-│   ├── schema.sql
-│   └── db_manager.py
-├── models/                # ML models
-│   ├── trainer.py
-│   └── metrics.py
-├── tests/                 # Comprehensive test suite
-├── scripts/               # Utility scripts
-├── config/                # Configuration files
-├── Dockerfile             # Docker configuration
-├── docker-compose.yml     # Multi-container setup
-└── requirements.txt       # Python dependencies
+├── agents/
+│   ├── base_agent.py          # Abstract base with safe_process() and Gemini integration
+│   ├── demand_agent.py        # Demand trend analysis
+│   ├── inventory_agent.py     # Safety stock and reorder optimization
+│   ├── anomaly_agent.py       # 3-sigma outlier detection
+│   ├── orchestrator.py        # Multi-agent coordinator + cross-agent synthesis
+│   ├── response_model.py      # AgentResponse, AgentStatus, Insight, InsightSeverity
+│   ├── validation.py          # Input DataFrame validation
+│   └── __init__.py
+├── dashboard/
+│   └── Home.py                # Streamlit entry point
+├── data/
+│   ├── train.csv
+│   ├── test.csv
+│   ├── stores.csv
+│   ├── features.csv           # Engineered features
+├── data_pipeline/
+│   ├── data_loader.py         # ETL from CSV to PostgreSQL
+│   ├── feature_engineering.py # Lag, rolling, temporal, and store features
+│   └── run_feature_engineering.py
+├── database/
+│   ├── schema.sql             # PostgreSQL schema
+│   ├── db_manager.py          # Connection management
+│   └── create-mlflow-db.sh
+├── models/
+│   ├── trainer.py             # WalmartForecaster: train, predict, save, load
+│   ├── train.py               # Training entry script
+│   ├── metrics.py             # WMAE, MAE, RMSE
+│   └── generate_forecasts.py  # Batch forecast generation
+├── scripts/
+│   ├── setup_database.py
+│   ├── train_model.py
+│   ├── test_agents.py
+│   ├── run_tests.py
+│   └── deploy.py
+├── tests/
+│   ├── test_agents.py
+│   ├── test_database.py
+│   ├── test_feature_engineering.py
+│   ├── test_integration.py
+│   ├── test_model.py
+│   ├── test_validation.py
+│   └── conftest.py
+├── config/
+│   └── config.yaml            # Model params, feature config, thresholds
+├── utils/
+│   └── logger.py
+├── Dockerfile
+├── docker-compose.yml
+└── requirements.txt
 ```
 
-## 🎯 Performance Metrics
+## Performance Metrics
 
 | Metric | Target | Achieved |
-|--------|--------|----------|
-| WMAE | < 810 | ✅ 790 |
-| Forecast Horizon | 8 weeks | ✅ 8 weeks |
-| Prediction Time | < 1s | ✅ 0.3s |
-| Dashboard Load | < 3s | ✅ 2.1s |
-| Test Coverage | > 80% | ✅ 85% |
+|---|---|---|
+| WMAE | < 810 | 790 |
+| Forecast Horizon | 8 weeks | 8 weeks |
+| Prediction Time | < 1s | 0.3s |
+| Dashboard Load | < 3s | 2.1s |
+| Test Coverage | > 80% | 85% |
 
-## 🛠️ Tech Stack
+### Model Configuration
 
-- **ML Framework**: LightGBM, scikit-learn
-- **AI**: Google Gemini 2.0 Flash
-- **Database**: PostgreSQL 16
-- **Tracking**: MLflow
-- **Dashboard**: Streamlit, Plotly
-- **Deployment**: Docker, Docker Compose
-- **Testing**: pytest, pytest-cov
+| Parameter | Value |
+|---|---|
+| Boosting rounds | 2000 (early stopping at 100) |
+| Learning rate | 0.03 |
+| Num leaves | 127 |
+| Quantile bounds | P10 / P90 |
+| Holiday weight (WMAE) | 5× vs regular weeks |
 
-## 📄 License
+### Feature Engineering
 
-This project is licensed under the MIT License - see [LICENSE](LICENSE) file for details.
+- **Lag features**: 1, 2, 4, 8, 52 weeks
+- **Rolling windows**: 4-week (mean, std, min, max), 13-week (mean, std), 52-week (mean, std)
+- **Temporal**: week of year, month, quarter, month start/end flags
+- **Store**: store type (one-hot), normalized size
 
-## 🙏 Acknowledgments
+## Tech Stack
 
-- Walmart recruiting dataset from Kaggle
-- Google Gemini API for AI capabilities
-- MLflow for experiment tracking
-- Streamlit for rapid dashboard development
+| Layer | Technology |
+|---|---|
+| ML Framework | LightGBM, scikit-learn |
+| AI / LLM | Google Gemini 2.5 Flash |
+| Database | PostgreSQL 16 |
+| Experiment Tracking | MLflow |
+| Dashboard | Streamlit, Plotly |
+| Deployment | Docker, Docker Compose |
+| Testing | pytest, pytest-cov |
+| Language | Python 3.11 |
 
-## 📞 Contact
+## License
+
+MIT License — see [LICENSE](LICENSE) for details.
+
+## Contact
 
 - **Author**: Abhishek Jha
 - **Email**: abhisheksjha201@gmail.com
-
-=======
-- **Project Link**: [https://github.com/JAbhi09/walmart-forecasting](https://github.com/JAbhi09/Walmart-Retail-Sales-Forecasting-System)
-
----
-
-**Built with ❤️ for better retail forecasting**
+- **Project**: [github.com/JAbhi09/Walmart-Retail-Sales-Forecasting-System](https://github.com/JAbhi09/Walmart-Retail-Sales-Forecasting-System)
