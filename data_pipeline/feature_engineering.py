@@ -78,24 +78,24 @@ def create_rolling_features(df, windows=[4, 13, 52], target_col='weekly_sales'):
     for window in windows:
         # Rolling mean
         df[f'rolling_mean_{window}'] = df.groupby(['store_id', 'dept_id'])[target_col].transform(
-            lambda x: x.rolling(window=window, min_periods=None).mean()
+            lambda x: x.shift(1).rolling(window=window, min_periods=1).mean()
         )
         rolling_cols.append(f'rolling_mean_{window}')
 
         # Rolling std
         df[f'rolling_std_{window}'] = df.groupby(['store_id', 'dept_id'])[target_col].transform(
-            lambda x: x.rolling(window=window, min_periods=None).std()
+            lambda x: x.shift(1).rolling(window=window, min_periods=1).std()
         )
         rolling_cols.append(f'rolling_std_{window}')
 
         # Additional stats for 4-week window
         if window == 4:
             df[f'rolling_min_{window}'] = df.groupby(['store_id', 'dept_id'])[target_col].transform(
-                lambda x: x.rolling(window=window, min_periods=None).min()
+                lambda x: x.shift(1).rolling(window=window, min_periods=1).min()
             )
             rolling_cols.append(f'rolling_min_{window}')
             df[f'rolling_max_{window}'] = df.groupby(['store_id', 'dept_id'])[target_col].transform(
-                lambda x: x.rolling(window=window, min_periods=None).max()
+                lambda x: x.shift(1).rolling(window=window, min_periods=1).max()
             )
             rolling_cols.append(f'rolling_max_{window}')
 
