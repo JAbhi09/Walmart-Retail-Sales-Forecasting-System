@@ -70,31 +70,41 @@ def create_rolling_features(df, windows=[4, 13, 52], target_col='weekly_sales'):
         DataFrame with rolling features
     """
     df = df.copy()
-    
+
     # Sort to ensure proper rolling calculation
     df = df.sort_values(['store_id', 'dept_id', 'date'])
-    
+
+    rolling_cols = []
     for window in windows:
         # Rolling mean
         df[f'rolling_mean_{window}'] = df.groupby(['store_id', 'dept_id'])[target_col].transform(
-            lambda x: x.rolling(window=window, min_periods=1).mean()
+            lambda x: x.rolling(window=window, min_periods=None).mean()
         )
-        
+        rolling_cols.append(f'rolling_mean_{window}')
+
         # Rolling std
         df[f'rolling_std_{window}'] = df.groupby(['store_id', 'dept_id'])[target_col].transform(
-            lambda x: x.rolling(window=window, min_periods=1).std()
+            lambda x: x.rolling(window=window, min_periods=None).std()
         )
-        
+        rolling_cols.append(f'rolling_std_{window}')
+
         # Additional stats for 4-week window
         if window == 4:
             df[f'rolling_min_{window}'] = df.groupby(['store_id', 'dept_id'])[target_col].transform(
-                lambda x: x.rolling(window=window, min_periods=1).min()
+                lambda x: x.rolling(window=window, min_periods=None).min()
             )
+            rolling_cols.append(f'rolling_min_{window}')
             df[f'rolling_max_{window}'] = df.groupby(['store_id', 'dept_id'])[target_col].transform(
-                lambda x: x.rolling(window=window, min_periods=1).max()
+                lambda x: x.rolling(window=window, min_periods=None).max()
             )
-    
+            rolling_cols.append(f'rolling_max_{window}')
+
+    rows_before = len(df)
+    df = df.dropna(subset=rolling_cols)
+    rows_dropped = rows_before - len(df)
+
     logger.info(f"✓ Created rolling features for {len(windows)} windows")
+    logger.info(f"  Dropped {rows_dropped:,} warm-up rows ({rows_before:,} → {len(df):,})")
     return df
 
 

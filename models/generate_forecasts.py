@@ -38,27 +38,37 @@ def get_db_engine():
 
 def load_model():
     """
-    Load trained LightGBM model
-    Tries local file first, then MLflow
+    Load trained LightGBM model(s).
+    Tries local files first, then MLflow for the point model.
+
+    Returns:
+        tuple: (model, model_lower, model_upper) where model_lower/model_upper
+               are None when quantile models have not been trained yet.
     """
     local_path = 'models/saved/walmart_forecaster.txt'
+    lower_path = 'models/saved/walmart_forecaster_lower.txt'
+    upper_path = 'models/saved/walmart_forecaster_upper.txt'
 
     # Option 1: Load from local file
     if Path(local_path).exists():
         model = lgb.Booster(model_file=local_path)
+        model_lower = lgb.Booster(model_file=lower_path) if Path(lower_path).exists() else None
+        model_upper = lgb.Booster(model_file=upper_path) if Path(upper_path).exists() else None
         logger.info(f"✅ Model loaded from local file: {local_path}")
-        return model
+        if model_lower and model_upper:
+            logger.info("✅ Quantile interval models loaded (lower/upper)")
+        else:
+            logger.warning("⚠️  Quantile models not found — falling back to heuristic intervals")
+        return model, model_lower, model_upper
 
-    # Option 2: Load from MLflow
+    # Option 2: Load from MLflow (point model only)
     try:
         import mlflow
         mlflow.set_tracking_uri(os.getenv('MLFLOW_TRACKING_URI'))
 
-        # Try the name used in trainer.py
         model_name = "walmart_sales_forecaster"
         logger.info(f"Local model not found. Trying MLflow: {model_name}")
 
-        # Get latest version
         client = mlflow.tracking.MlflowClient()
         versions = client.get_latest_versions(model_name)
 
@@ -66,7 +76,7 @@ def load_model():
             model_uri = f"models:/{model_name}/{versions[0].version}"
             model = mlflow.lightgbm.load_model(model_uri)
             logger.info(f"✅ Model loaded from MLflow: {model_uri}")
-            return model
+            return model, None, None
         else:
             raise FileNotFoundError(f"No versions found for {model_name}")
 
@@ -139,14 +149,19 @@ def get_feature_columns(model):
     ]
 
 
-def generate_predictions(model, features_df, forecast_weeks=8):
+def generate_predictions(model, features_df, forecast_weeks=8, model_lower=None, model_upper=None):
     """
-    Generate predictions for future weeks
+    Generate predictions for future weeks.
 
-    For each store-dept, uses the latest known features as a base
-    and generates predictions for the next N weeks.
+    Uses quantile models for prediction intervals when available; falls back to a
+    heuristic ±15 % formula for backwards compatibility with old saved models.
     """
     logger.info(f"Generating {forecast_weeks}-week forecasts...")
+    use_quantile = model_lower is not None and model_upper is not None
+    if use_quantile:
+        logger.info("   Using quantile regression for prediction intervals")
+    else:
+        logger.info("   Using heuristic formula for prediction intervals (quantile models not loaded)")
 
     feature_cols = get_feature_columns(model)
     last_date = pd.to_datetime(features_df['feature_date'].max())
@@ -199,15 +214,18 @@ def generate_predictions(model, features_df, forecast_weeks=8):
 
             X = X[feature_cols]  # Ensure correct column order
 
-            # Predict
-            pred = model.predict(X)[0]
-            pred = max(pred, 0)  # Sales can't be negative
+            # Point forecast
+            pred = max(model.predict(X)[0], 0)
 
-            # Confidence interval (based on prediction magnitude)
-            # Wider intervals for larger predictions
-            std_estimate = max(pred * 0.15, 100)  # At least $100 uncertainty
-            lower = max(pred - 1.96 * std_estimate, 0)
-            upper = pred + 1.96 * std_estimate
+            # Prediction interval
+            if use_quantile:
+                lower = max(min(model_lower.predict(X)[0], pred), 0)
+                upper = max(model_upper.predict(X)[0], pred)
+            else:
+                # Heuristic fallback for models trained without quantile heads
+                std_estimate = max(pred * 0.15, 100)
+                lower = max(pred - 1.96 * std_estimate, 0)
+                upper = pred + 1.96 * std_estimate
 
             all_forecasts.append({
                 'store_id': store_id,
@@ -263,7 +281,7 @@ def main():
 
     # 2. Load model
     logger.info("\n[2/4] Loading trained model...")
-    model = load_model()
+    model, model_lower, model_upper = load_model()
 
     # 3. Load features and generate predictions
     logger.info("\n[3/4] Loading features and generating predictions...")
@@ -273,7 +291,10 @@ def main():
         logger.error("❌ No features found! Run the ETL pipeline first.")
         return
 
-    forecast_df = generate_predictions(model, features_df, forecast_weeks=8)
+    forecast_df = generate_predictions(
+        model, features_df, forecast_weeks=8,
+        model_lower=model_lower, model_upper=model_upper,
+    )
 
     # 4. Write to database
     logger.info("\n[4/4] Writing forecasts to database...")

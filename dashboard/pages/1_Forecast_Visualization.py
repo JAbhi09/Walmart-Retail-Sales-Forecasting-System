@@ -150,11 +150,19 @@ with tab1:
     # Historical data is already aggregated by date
     hist_agg = historical_data.sort_values('feature_date').tail(20)
 
-    forecast_agg = forecasts.groupby('forecast_date').agg(
-        predicted_sales=('predicted_sales', 'sum'),
-        lower_bound=('lower_bound', 'sum'),
-        upper_bound=('upper_bound', 'sum'),
-    ).reset_index().sort_values('forecast_date')
+    has_intervals = 'lower_bound' in forecasts.columns and 'upper_bound' in forecasts.columns
+
+    agg_spec = {'predicted_sales': ('predicted_sales', 'sum')}
+    if has_intervals:
+        agg_spec['lower_bound'] = ('lower_bound', 'sum')
+        agg_spec['upper_bound'] = ('upper_bound', 'sum')
+
+    forecast_agg = (
+        forecasts.groupby('forecast_date')
+        .agg(**agg_spec)
+        .reset_index()
+        .sort_values('forecast_date')
+    )
 
     fig = go.Figure()
 
@@ -178,16 +186,17 @@ with tab1:
         marker=dict(size=8)
     ))
 
-    # Confidence interval
-    fig.add_trace(go.Scatter(
-        x=forecast_agg['forecast_date'].tolist() + forecast_agg['forecast_date'].tolist()[::-1],
-        y=forecast_agg['upper_bound'].tolist() + forecast_agg['lower_bound'].tolist()[::-1],
-        fill='toself',
-        fillcolor='rgba(255, 107, 53, 0.2)',
-        line=dict(color='rgba(255,255,255,0)'),
-        name='Confidence Interval',
-        showlegend=True
-    ))
+    # Prediction interval (only when interval columns are present)
+    if has_intervals:
+        fig.add_trace(go.Scatter(
+            x=forecast_agg['forecast_date'].tolist() + forecast_agg['forecast_date'].tolist()[::-1],
+            y=forecast_agg['upper_bound'].tolist() + forecast_agg['lower_bound'].tolist()[::-1],
+            fill='toself',
+            fillcolor='rgba(255, 107, 53, 0.2)',
+            line=dict(color='rgba(255,255,255,0)'),
+            name='Prediction Interval (P10–P90)',
+            showlegend=True
+        ))
 
     fig.update_layout(
         title="Sales Forecast with Confidence Interval",
@@ -227,15 +236,19 @@ with tab2:
 with tab3:
     st.markdown("### Forecast Data Table")
 
-    display_df = forecasts[[
-        'forecast_date', 'store_id', 'dept_id',
-        'predicted_sales', 'lower_bound', 'upper_bound', 'model_name'
-    ]].copy()
+    table_cols = ['forecast_date', 'store_id', 'dept_id', 'predicted_sales', 'model_name']
+    col_names = ['Date', 'Store', 'Dept', 'Forecast', 'Model']
+    if has_intervals:
+        table_cols = ['forecast_date', 'store_id', 'dept_id',
+                      'predicted_sales', 'lower_bound', 'upper_bound', 'model_name']
+        col_names = ['Date', 'Store', 'Dept', 'Forecast', 'Lower Bound (P10)', 'Upper Bound (P90)', 'Model']
 
+    display_df = forecasts[table_cols].copy()
     display_df['predicted_sales'] = display_df['predicted_sales'].apply(lambda x: f"${x:,.2f}")
-    display_df['lower_bound'] = display_df['lower_bound'].apply(lambda x: f"${x:,.2f}")
-    display_df['upper_bound'] = display_df['upper_bound'].apply(lambda x: f"${x:,.2f}")
-    display_df.columns = ['Date', 'Store', 'Dept', 'Forecast', 'Lower Bound', 'Upper Bound', 'Model']
+    if has_intervals:
+        display_df['lower_bound'] = display_df['lower_bound'].apply(lambda x: f"${x:,.2f}")
+        display_df['upper_bound'] = display_df['upper_bound'].apply(lambda x: f"${x:,.2f}")
+    display_df.columns = col_names
 
     st.dataframe(display_df, use_container_width=True, height=400)
 

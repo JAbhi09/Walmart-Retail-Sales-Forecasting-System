@@ -10,41 +10,47 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+def wmae(y_true, y_pred, weights):
+    """
+    Core Weighted Mean Absolute Error computation.
+
+    This is the single source of truth for the WMAE formula. Both
+    ``calculate_wmae`` (holiday-based API) and ``wmae_lgb_metric``
+    (LightGBM callback API) delegate here.
+
+    Args:
+        y_true (array-like): Actual values.
+        y_pred (array-like): Predicted values.
+        weights (array-like): Non-negative per-sample weights.
+            Samples with weight 0 contribute nothing to numerator or
+            denominator and are effectively ignored.
+
+    Returns:
+        float: WMAE = sum(w_i * |y_i - ŷ_i|) / sum(w_i)
+    """
+    y_true = np.array(y_true, dtype=float)
+    y_pred = np.array(y_pred, dtype=float)
+    weights = np.array(weights, dtype=float)
+    return float(np.sum(weights * np.abs(y_true - y_pred)) / np.sum(weights))
+
+
 def calculate_wmae(y_true, y_pred, is_holiday):
     """
-    Calculate Weighted Mean Absolute Error (WMAE)
-    
-    WMAE is the primary evaluation metric for Walmart recruiting competition.
-    Holiday weeks are weighted 5x more than non-holiday weeks.
-    
+    Calculate Weighted Mean Absolute Error with holiday-based weighting.
+
+    Convenience wrapper around :func:`wmae` that converts a boolean holiday
+    flag into per-sample weights (5 for holiday weeks, 1 for non-holiday).
+
     Args:
-        y_true: Actual sales values
-        y_pred: Predicted sales values
-        is_holiday: Boolean array indicating holiday weeks
-    
+        y_true (array-like): Actual sales values.
+        y_pred (array-like): Predicted sales values.
+        is_holiday (array-like): Boolean array indicating holiday weeks.
+
     Returns:
-        float: WMAE score
-    
-    Formula:
-        WMAE = sum(w_i * |y_i - ŷ_i|) / sum(w_i)
-        where w_i = 5 if is_holiday else 1
+        float: WMAE score.
     """
-    # Convert to numpy arrays
-    y_true = np.array(y_true)
-    y_pred = np.array(y_pred)
-    is_holiday = np.array(is_holiday)
-    
-    # Calculate weights (5 for holiday, 1 for non-holiday)
-    weights = np.where(is_holiday, 5.0, 1.0)
-    
-    # Calculate weighted absolute errors
-    absolute_errors = np.abs(y_true - y_pred)
-    weighted_errors = weights * absolute_errors
-    
-    # Calculate WMAE
-    wmae = np.sum(weighted_errors) / np.sum(weights)
-    
-    return wmae
+    weights = np.where(np.array(is_holiday, dtype=bool), 5.0, 1.0)
+    return wmae(y_true, y_pred, weights)
 
 
 def calculate_mae(y_true, y_pred):
@@ -126,28 +132,23 @@ def evaluate_model(y_true, y_pred, is_holiday):
 
 def wmae_lgb_metric(y_pred, dtrain):
     """
-    Custom WMAE metric for LightGBM
-    
-    LightGBM requires metrics in format: (metric_name, metric_value, is_higher_better)
-    
+    LightGBM-compatible wrapper for :func:`wmae`.
+
+    LightGBM passes ``(y_pred, dtrain)`` and expects
+    ``(metric_name, value, is_higher_better)`` in return.
+
     Args:
-        y_pred: Predicted values
-        dtrain: LightGBM Dataset object
-    
+        y_pred (array-like): Predicted values supplied by LightGBM.
+        dtrain: LightGBM Dataset object. Holiday weights are read from the
+            ``'is_holiday'`` field if it was set on the dataset; otherwise
+            every sample is treated as a non-holiday (weight = 1).
+
     Returns:
-        tuple: (metric_name, metric_value, is_higher_better)
+        tuple: ('wmae', float, False)
     """
     y_true = dtrain.get_label()
-    
-    # Get is_holiday from dataset metadata
-    # Note: This needs to be set when creating the dataset
     is_holiday = dtrain.get_field('is_holiday')
     if is_holiday is None:
-        # Fallback: treat all as non-holiday
         is_holiday = np.zeros(len(y_true), dtype=bool)
-    
-    wmae = calculate_wmae(y_true, y_pred, is_holiday)
-    
-    # Return (name, value, is_higher_better)
-    # Lower WMAE is better, so is_higher_better=False
-    return 'wmae', wmae, False
+    weights = np.where(np.array(is_holiday, dtype=bool), 5.0, 1.0)
+    return 'wmae', wmae(y_true, y_pred, weights), False

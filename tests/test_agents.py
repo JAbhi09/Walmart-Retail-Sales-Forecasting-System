@@ -6,6 +6,8 @@ import pandas as pd
 import numpy as np
 from unittest.mock import Mock, patch, MagicMock
 
+from agents.response_model import AgentResponse
+
 
 # ── Patch Gemini globally so agents can be instantiated without a real API key ──
 
@@ -223,8 +225,8 @@ class TestInventoryOptimizationAgent:
             service_level=0.95,
             lead_time_days=7,
         )
-        assert "response" in result
-        assert isinstance(result["response"], str)
+        assert isinstance(result, AgentResponse)
+        assert isinstance(result.llm_response, str)
 
     def test_summarize_context_with_service_level(self):
         from agents.inventory_agent import InventoryOptimizationAgent
@@ -270,10 +272,10 @@ class TestAnomalyDetectionAgent:
         from agents.anomaly_agent import AnomalyDetectionAgent
         agent = AnomalyDetectionAgent()
         result = agent.detect_anomalies(sample_sales_data, threshold=3.0)
-        assert "response" in result
-        assert "anomalies_detected" in result
+        assert isinstance(result, AgentResponse)
+        assert "anomalies_detected" in result.raw_data
         # Our fixture has 2 clear outliers (200k, 250k)
-        assert result["anomalies_detected"] >= 2
+        assert result.raw_data["anomalies_detected"] >= 2
 
     def test_process_without_anomalies(self, sample_sales_data):
         from agents.anomaly_agent import AnomalyDetectionAgent
@@ -322,3 +324,222 @@ class TestAgentIntegration:
         agent = DemandForecastingAgent()
         result = agent.process({})
         assert "response" in result
+
+
+# ── validate_dataframe Unit Tests ───────────────────────────
+
+class TestValidateDataframe:
+    """Direct tests for the validate_dataframe helper."""
+
+    def test_wrong_type_dict_raises(self):
+        from agents.validation import validate_dataframe
+        with pytest.raises(ValueError, match="DataFrame"):
+            validate_dataframe({"store_id": [1]}, ["store_id"], "test_df")
+
+    def test_none_raises(self):
+        from agents.validation import validate_dataframe
+        with pytest.raises(ValueError, match="DataFrame"):
+            validate_dataframe(None, ["store_id"], "test_df")
+
+    def test_empty_dataframe_raises(self):
+        from agents.validation import validate_dataframe
+        df = pd.DataFrame({"store_id": pd.Series([], dtype=int)})
+        with pytest.raises(ValueError, match="empty"):
+            validate_dataframe(df, ["store_id"], "test_df")
+
+    def test_missing_columns_raises_with_names(self):
+        from agents.validation import validate_dataframe
+        df = pd.DataFrame({"store_id": [1], "dept_id": [2]})
+        with pytest.raises(ValueError, match="missing required column"):
+            validate_dataframe(df, ["store_id", "dept_id", "forecast_date"], "test_df")
+
+    def test_missing_columns_error_names_the_absent_ones(self):
+        from agents.validation import validate_dataframe
+        df = pd.DataFrame({"store_id": [1]})
+        with pytest.raises(ValueError, match="forecast_date"):
+            validate_dataframe(df, ["store_id", "forecast_date"], "test_df")
+
+    def test_all_null_date_column_raises(self):
+        from agents.validation import validate_dataframe
+        df = pd.DataFrame({"store_id": [1, 2], "date_col": [None, None]})
+        with pytest.raises(ValueError, match="entirely null or unparseable"):
+            validate_dataframe(df, ["store_id", "date_col"], "test_df", date_columns=["date_col"])
+
+    def test_unparseable_date_strings_raise(self):
+        from agents.validation import validate_dataframe
+        df = pd.DataFrame({"store_id": [1, 2], "date_col": ["not-a-date", "also-bad"]})
+        with pytest.raises(ValueError, match="entirely null or unparseable"):
+            validate_dataframe(df, ["store_id", "date_col"], "test_df", date_columns=["date_col"])
+
+    def test_valid_dataframe_passes(self, sample_forecasts):
+        from agents.validation import validate_dataframe
+        # Must not raise
+        validate_dataframe(
+            sample_forecasts,
+            ["store_id", "dept_id", "forecast_date", "predicted_sales"],
+            "forecasts",
+            date_columns=["forecast_date"],
+        )
+
+    def test_valid_sales_data_passes(self, sample_sales_data):
+        from agents.validation import validate_dataframe
+        validate_dataframe(
+            sample_sales_data,
+            ["store_id", "dept_id", "feature_date", "weekly_sales"],
+            "sales_data",
+            date_columns=["feature_date"],
+        )
+
+
+# ── Agent Validation Wiring Tests ───────────────────────────
+
+class TestAgentValidationWiring:
+    """Verify each agent's entry point rejects bad input with clear errors."""
+
+    # --- DemandForecastingAgent ---
+
+    def test_demand_process_rejects_dict_forecasts(self):
+        from agents.demand_agent import DemandForecastingAgent
+        agent = DemandForecastingAgent()
+        with pytest.raises(ValueError, match="DataFrame"):
+            agent.process({"forecasts": {"store_id": [1], "dept_id": [2]}})
+
+    def test_demand_process_rejects_missing_columns(self):
+        from agents.demand_agent import DemandForecastingAgent
+        agent = DemandForecastingAgent()
+        bad_df = pd.DataFrame({"store_id": [1], "dept_id": [2]})
+        with pytest.raises(ValueError, match="missing required column"):
+            agent.process({"forecasts": bad_df})
+
+    def test_demand_process_rejects_empty_df(self):
+        from agents.demand_agent import DemandForecastingAgent
+        agent = DemandForecastingAgent()
+        empty_df = pd.DataFrame({
+            "store_id": pd.Series([], dtype=int),
+            "dept_id": pd.Series([], dtype=int),
+            "forecast_date": pd.Series([], dtype="datetime64[ns]"),
+            "predicted_sales": pd.Series([], dtype=float),
+        })
+        with pytest.raises(ValueError, match="empty"):
+            agent.process({"forecasts": empty_df})
+
+    def test_demand_process_none_forecasts_allowed(self):
+        """None forecasts (no data) should not raise — existing behaviour."""
+        from agents.demand_agent import DemandForecastingAgent
+        agent = DemandForecastingAgent()
+        result = agent.process({})
+        assert "response" in result
+
+    def test_demand_safe_process_returns_failure_on_bad_input(self):
+        from agents.demand_agent import DemandForecastingAgent
+        from agents.response_model import AgentStatus
+        agent = DemandForecastingAgent()
+        bad_df = pd.DataFrame({"store_id": [1]})
+        result = agent.safe_process({"forecasts": bad_df})
+        assert result.status == AgentStatus.FAILURE
+        assert result.error_message is not None
+        assert "missing required column" in result.error_message
+
+    # --- InventoryOptimizationAgent ---
+
+    def test_inventory_process_rejects_dict_forecasts(self):
+        from agents.inventory_agent import InventoryOptimizationAgent
+        agent = InventoryOptimizationAgent()
+        with pytest.raises(ValueError, match="DataFrame"):
+            agent.process({"forecasts": {"store_id": [1]}})
+
+    def test_inventory_process_rejects_missing_columns(self):
+        from agents.inventory_agent import InventoryOptimizationAgent
+        agent = InventoryOptimizationAgent()
+        bad_df = pd.DataFrame({"store_id": [1], "dept_id": [2]})
+        with pytest.raises(ValueError, match="missing required column"):
+            agent.process({"forecasts": bad_df})
+
+    def test_inventory_process_rejects_empty_df(self):
+        from agents.inventory_agent import InventoryOptimizationAgent
+        agent = InventoryOptimizationAgent()
+        empty_df = pd.DataFrame({
+            "store_id": pd.Series([], dtype=int),
+            "dept_id": pd.Series([], dtype=int),
+            "forecast_date": pd.Series([], dtype="datetime64[ns]"),
+            "predicted_sales": pd.Series([], dtype=float),
+        })
+        with pytest.raises(ValueError, match="empty"):
+            agent.process({"forecasts": empty_df})
+
+    def test_inventory_safe_process_returns_failure_on_bad_input(self):
+        from agents.inventory_agent import InventoryOptimizationAgent
+        from agents.response_model import AgentStatus
+        agent = InventoryOptimizationAgent()
+        bad_df = pd.DataFrame({"store_id": [1]})
+        result = agent.safe_process({"forecasts": bad_df})
+        assert result.status == AgentStatus.FAILURE
+        assert "missing required column" in result.error_message
+
+    # --- AnomalyDetectionAgent ---
+
+    def test_anomaly_process_rejects_dict_sales_data(self):
+        from agents.anomaly_agent import AnomalyDetectionAgent
+        agent = AnomalyDetectionAgent()
+        with pytest.raises(ValueError, match="DataFrame"):
+            agent.process({"sales_data": {"store_id": [1]}})
+
+    def test_anomaly_process_rejects_missing_columns(self):
+        from agents.anomaly_agent import AnomalyDetectionAgent
+        agent = AnomalyDetectionAgent()
+        bad_df = pd.DataFrame({"store_id": [1], "dept_id": [2]})
+        with pytest.raises(ValueError, match="missing required column"):
+            agent.process({"sales_data": bad_df})
+
+    def test_anomaly_process_rejects_empty_df(self):
+        from agents.anomaly_agent import AnomalyDetectionAgent
+        agent = AnomalyDetectionAgent()
+        empty_df = pd.DataFrame({
+            "store_id": pd.Series([], dtype=int),
+            "dept_id": pd.Series([], dtype=int),
+            "feature_date": pd.Series([], dtype="datetime64[ns]"),
+            "weekly_sales": pd.Series([], dtype=float),
+        })
+        with pytest.raises(ValueError, match="empty"):
+            agent.process({"sales_data": empty_df})
+
+    def test_anomaly_process_none_sales_data_allowed(self):
+        """None sales_data should not raise — existing behaviour."""
+        from agents.anomaly_agent import AnomalyDetectionAgent
+        agent = AnomalyDetectionAgent()
+        result = agent.process({})
+        assert "response" in result
+
+    def test_anomaly_detect_rejects_dict(self):
+        from agents.anomaly_agent import AnomalyDetectionAgent
+        agent = AnomalyDetectionAgent()
+        with pytest.raises(ValueError, match="DataFrame"):
+            agent.detect_anomalies({"store_id": [1]})
+
+    def test_anomaly_detect_rejects_missing_columns(self):
+        from agents.anomaly_agent import AnomalyDetectionAgent
+        agent = AnomalyDetectionAgent()
+        bad_df = pd.DataFrame({"store_id": [1], "dept_id": [2]})
+        with pytest.raises(ValueError, match="missing required column"):
+            agent.detect_anomalies(bad_df)
+
+    def test_anomaly_detect_rejects_empty_df(self):
+        from agents.anomaly_agent import AnomalyDetectionAgent
+        agent = AnomalyDetectionAgent()
+        empty_df = pd.DataFrame({
+            "store_id": pd.Series([], dtype=int),
+            "dept_id": pd.Series([], dtype=int),
+            "feature_date": pd.Series([], dtype="datetime64[ns]"),
+            "weekly_sales": pd.Series([], dtype=float),
+        })
+        with pytest.raises(ValueError, match="empty"):
+            agent.detect_anomalies(empty_df)
+
+    def test_anomaly_safe_process_returns_failure_on_bad_input(self):
+        from agents.anomaly_agent import AnomalyDetectionAgent
+        from agents.response_model import AgentStatus
+        agent = AnomalyDetectionAgent()
+        bad_df = pd.DataFrame({"store_id": [1]})
+        result = agent.safe_process({"sales_data": bad_df})
+        assert result.status == AgentStatus.FAILURE
+        assert "missing required column" in result.error_message

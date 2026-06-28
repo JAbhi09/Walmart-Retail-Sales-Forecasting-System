@@ -115,7 +115,18 @@ class DatabaseManager:
         except Exception as e:
             logger.error(f"✗ Connection test failed: {e}")
             return False
-    
+
+    def check_connection(self):
+        """Test DB connectivity. Returns (is_healthy, error_message)."""
+        try:
+            engine = self.connect()
+            with engine.connect() as conn:
+                conn.execute(text("SELECT 1"))
+            return True, ""
+        except Exception as e:
+            logger.error(f"Database health check failed: {e}")
+            return False, str(e)
+
     def close(self):
         """Close database connection"""
         if self.engine:

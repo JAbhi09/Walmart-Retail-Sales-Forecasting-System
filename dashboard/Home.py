@@ -4,11 +4,14 @@ Walmart Retail Sales Forecasting System
 """
 import streamlit as st
 import sys
+import logging
 from pathlib import Path
 
 # Add project root to path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
+
+logger = logging.getLogger(__name__)
 
 # Page configuration
 st.set_page_config(
@@ -51,6 +54,15 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
+# Run DB health check once per page load; result is reused in sidebar and System Status
+try:
+    from database.db_manager import db_manager
+    import pandas as pd
+    _db_healthy, _db_error = db_manager.check_connection()
+except Exception as _e:
+    logger.error("Could not initialise db_manager: %s", _e, exc_info=True)
+    _db_healthy, _db_error = False, str(_e)
+
 # Sidebar
 with st.sidebar:
     st.image("https://upload.wikimedia.org/wikipedia/commons/thumb/c/ca/Walmart_logo.svg/200px-Walmart_logo.svg.png", width=150)
@@ -71,27 +83,26 @@ with st.sidebar:
     st.markdown("### Quick Stats")
     
     # Load quick stats
-    try:
-        from database.db_manager import db_manager
-        import pandas as pd
-        
-        engine = db_manager.connect()
-        
-        # Get store count
-        stores = pd.read_sql("SELECT COUNT(DISTINCT store_id) as count FROM stores", engine)
-        st.metric("Total Stores", f"{stores['count'].iloc[0]}")
-        
-        # Get department count
-        depts = pd.read_sql("SELECT COUNT(DISTINCT dept_id) as count FROM raw_sales", engine)
-        st.metric("Departments", f"{depts['count'].iloc[0]}")
-        
-        # Get latest data date
-        latest = pd.read_sql("SELECT MAX(feature_date) as date FROM engineered_features", engine)
-        st.metric("Latest Data", latest['date'].iloc[0].strftime('%Y-%m-%d'))
-        
-        db_manager.close()
-    except Exception as e:
-        st.warning("Unable to load stats")
+    if not _db_healthy:
+        st.error(f"Database unavailable: {_db_error}")
+    else:
+        try:
+            engine = db_manager.connect()
+
+            stores = pd.read_sql("SELECT COUNT(DISTINCT store_id) as count FROM stores", engine)
+            st.metric("Total Stores", f"{stores['count'].iloc[0]}")
+
+            depts = pd.read_sql("SELECT COUNT(DISTINCT dept_id) as count FROM raw_sales", engine)
+            st.metric("Departments", f"{depts['count'].iloc[0]}")
+
+            latest = pd.read_sql("SELECT MAX(feature_date) as date FROM engineered_features", engine)
+            date_val = latest['date'].iloc[0]
+            st.metric("Latest Data", date_val.strftime('%Y-%m-%d') if date_val is not None else "No data")
+
+            db_manager.close()
+        except Exception as e:
+            logger.error("Failed to load Quick Stats: %s", e, exc_info=True)
+            st.warning(f"Stats unavailable: {e}")
 
 # Main content
 st.markdown('<div class="main-header">🛒 Walmart Sales Forecasting System</div>', unsafe_allow_html=True)
@@ -146,7 +157,10 @@ st.markdown("### 🔧 System Status")
 status_col1, status_col2, status_col3, status_col4 = st.columns(4)
 
 with status_col1:
-    st.success("✅ Database Connected")
+    if _db_healthy:
+        st.success("✅ Database Connected")
+    else:
+        st.error("❌ Database Unavailable")
 
 with status_col2:
     st.success("✅ Model Loaded")

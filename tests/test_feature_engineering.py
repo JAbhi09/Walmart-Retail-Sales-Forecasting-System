@@ -137,6 +137,18 @@ class TestRollingFeatures:
         # Rolling mean should be within the range of weekly_sales
         assert result["rolling_mean_4"].min() >= sample_sales_data["weekly_sales"].min()
 
+    def test_no_nans_in_rolling_features(self, sample_sales_data):
+        result = create_rolling_features(sample_sales_data, windows=[4, 13])
+        rolling_cols = [c for c in result.columns if c.startswith("rolling_")]
+        for col in rolling_cols:
+            assert result[col].isna().sum() == 0, f"{col} still contains NaN after warm-up drop"
+
+    def test_warmup_rows_dropped(self, sample_sales_data):
+        result = create_rolling_features(sample_sales_data, windows=[4, 13])
+        # The largest window (13) requires 13 rows before producing a value,
+        # so each group loses 12 warm-up rows
+        assert len(result) < len(sample_sales_data)
+
 
 # ── Economic Features ───────────────────────────────────────
 
@@ -230,10 +242,10 @@ class TestFullPipeline:
         # Should have more columns than the raw sales data
         assert result.shape[1] > sample_sales_data.shape[1]
 
-    def test_pipeline_preserves_rows(self, sample_sales_data, sample_features_data, sample_stores_data):
+    def test_pipeline_drops_warmup_rows(self, sample_sales_data, sample_features_data, sample_stores_data):
         result = engineer_features(sample_sales_data, sample_features_data, sample_stores_data)
-        # Should not lose rows (left join)
-        assert len(result) == len(sample_sales_data)
+        # Rolling warm-up rows are dropped, so output must be smaller than input
+        assert len(result) < len(sample_sales_data)
 
     def test_pipeline_renames_date(self, sample_sales_data, sample_features_data, sample_stores_data):
         result = engineer_features(sample_sales_data, sample_features_data, sample_stores_data)

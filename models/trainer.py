@@ -37,11 +37,17 @@ class WalmartForecaster:
         
         self.model_config = self.config['model']
         self.mlflow_config = self.config['mlflow']
-        
+
         # Model attributes
         self.model = None
         self.feature_names = None
         self.feature_importance = None
+
+        # Quantile regression models for prediction intervals
+        self.model_lower = None
+        self.model_upper = None
+        forecasting_cfg = self.config.get('forecasting', {})
+        self.quantile_alpha = forecasting_cfg.get('quantile_alpha', 0.1)
         
         # MLflow setup
         mlflow.set_tracking_uri(os.getenv('MLFLOW_TRACKING_URI'))
@@ -109,6 +115,28 @@ class WalmartForecaster:
         
         return train_df, val_df
     
+    def _build_quantile_params(self, alpha):
+        """Return LightGBM params for quantile regression at the given alpha."""
+        params = dict(self.model_config['params'])
+        params['objective'] = 'quantile'
+        params['metric'] = 'quantile'
+        params['alpha'] = alpha
+        return params
+
+    def _train_quantile_model(self, train_data, valid_sets, valid_names, alpha):
+        """Train a single quantile regression model."""
+        return lgb.train(
+            self._build_quantile_params(alpha),
+            train_data,
+            num_boost_round=self.model_config['num_boost_round'],
+            valid_sets=valid_sets,
+            valid_names=valid_names,
+            callbacks=[
+                lgb.early_stopping(stopping_rounds=self.model_config['early_stopping_rounds']),
+                lgb.log_evaluation(period=50),
+            ],
+        )
+
     def train(self, train_df, val_df=None):
         """
         Train LightGBM model with MLflow tracking
@@ -205,7 +233,18 @@ class WalmartForecaster:
                 artifact_path='model',
                 registered_model_name='walmart_sales_forecaster'
             )
-            
+
+            # Train quantile models for prediction intervals
+            mlflow.log_param('quantile_alpha', self.quantile_alpha)
+            logger.info(f"\nTraining quantile models (alpha={self.quantile_alpha} / {1.0 - self.quantile_alpha})...")
+            self.model_lower = self._train_quantile_model(
+                train_data, valid_sets, valid_names, alpha=self.quantile_alpha
+            )
+            self.model_upper = self._train_quantile_model(
+                train_data, valid_sets, valid_names, alpha=1.0 - self.quantile_alpha
+            )
+            logger.info("✓ Quantile models trained")
+
             # Get run info
             run_id = mlflow.active_run().info.run_id
             logger.info(f"\n✓ MLflow run ID: {run_id}")
@@ -251,41 +290,75 @@ class WalmartForecaster:
     
     def predict(self, X):
         """
-        Make predictions
-        
-        Args:
-            X: Feature dataframe
-        
+        Make predictions with optional prediction intervals.
+
         Returns:
-            np.array: Predictions
+            pd.DataFrame with columns predicted_sales (always present) and
+            predicted_sales_lower / predicted_sales_upper (when quantile models
+            have been trained or loaded).
         """
         if self.model is None:
             raise ValueError("Model not trained. Call train() first.")
-        
-        return self.model.predict(X)
+
+        point = self.model.predict(X)
+
+        if self.model_lower is not None and self.model_upper is not None:
+            lower = self.model_lower.predict(X)
+            upper = self.model_upper.predict(X)
+            # Enforce lower ≤ predicted ≤ upper and non-negative sales
+            lower = np.minimum(lower, point)
+            upper = np.maximum(upper, point)
+            lower = np.maximum(lower, 0.0)
+            return pd.DataFrame({
+                'predicted_sales': point,
+                'predicted_sales_lower': lower,
+                'predicted_sales_upper': upper,
+            })
+
+        return pd.DataFrame({'predicted_sales': point})
     
     def save_model(self, path='models/saved/walmart_forecaster.txt'):
         """
-        Save model to file
-        
+        Save point forecast model and quantile models (if trained) to disk.
+
         Args:
-            path: Path to save model
+            path: Path for the point forecast model; quantile models are saved
+                  alongside with _lower/_upper suffixes.
         """
         if self.model is None:
             raise ValueError("Model not trained. Call train() first.")
-        
-        # Create directory if it doesn't exist
+
         Path(path).parent.mkdir(parents=True, exist_ok=True)
-        
         self.model.save_model(path)
         logger.info(f"✓ Model saved to {path}")
-    
+
+        if self.model_lower is not None:
+            lower_path = path.replace('.txt', '_lower.txt')
+            self.model_lower.save_model(lower_path)
+            logger.info(f"✓ Lower quantile model saved to {lower_path}")
+
+        if self.model_upper is not None:
+            upper_path = path.replace('.txt', '_upper.txt')
+            self.model_upper.save_model(upper_path)
+            logger.info(f"✓ Upper quantile model saved to {upper_path}")
+
     def load_model(self, path='models/saved/walmart_forecaster.txt'):
         """
-        Load model from file
-        
+        Load point forecast model and quantile models (if present) from disk.
+
         Args:
-            path: Path to model file
+            path: Path to the point forecast model file.
         """
         self.model = lgb.Booster(model_file=path)
         logger.info(f"✓ Model loaded from {path}")
+
+        lower_path = path.replace('.txt', '_lower.txt')
+        upper_path = path.replace('.txt', '_upper.txt')
+
+        if Path(lower_path).exists():
+            self.model_lower = lgb.Booster(model_file=lower_path)
+            logger.info(f"✓ Lower quantile model loaded from {lower_path}")
+
+        if Path(upper_path).exists():
+            self.model_upper = lgb.Booster(model_file=upper_path)
+            logger.info(f"✓ Upper quantile model loaded from {upper_path}")

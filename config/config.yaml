@@ -65,7 +65,17 @@ features:
 # Forecasting
 forecasting:
   horizon_weeks: 8
-  confidence_interval: 0.15  # ±15%
+  confidence_interval: 0.15  # ±15% (kept for backwards compat)
+  quantile_alpha: 0.1  # lower/upper bounds at P10 and P90
+
+# Anomaly Detection
+anomaly_detection:
+  # Z-score multiplier: data points more than this many standard deviations
+  # from the mean are flagged as anomalies. 3.0 follows the three-sigma rule,
+  # which flags roughly 0.3% of a normal distribution — a balance between
+  # catching genuine outliers and avoiding false positives. Raise the value
+  # to reduce sensitivity; lower it to catch subtler deviations.
+  threshold: 3.0
 
 # Logging
 logging:
