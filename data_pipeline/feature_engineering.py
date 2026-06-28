@@ -119,7 +119,13 @@ def create_economic_features(df):
         DataFrame with economic features
     """
     df = df.copy()
-    
+
+    # Impute missing economic indicators before any diff() to prevent NaN propagation
+    for col in ['cpi', 'unemployment']:
+        df[col] = df.groupby('store_id')[col].transform(
+            lambda x: x.ffill().bfill()
+        )
+
     # Sort for proper shift calculations
     df = df.sort_values(['store_id', 'date'])
     
